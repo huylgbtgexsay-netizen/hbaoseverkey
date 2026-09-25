@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HBAO KEY ADMIN</title>
+<style>
+*{box-sizing:border-box;}
+body{margin:0;background:#05070d;color:#00ffcc;font-family:Arial,Helvetica,sans-serif;text-align:center;}
+.container{max-width:520px;margin:auto;padding:15px;}
+.card{border:1px solid #2f7dff;border-radius:15px;box-shadow:0 0 15px rgba(47,125,255,.25);padding:16px;margin:15px 0;background:#020807;}
+button,input,select{width:100%;padding:12px;margin-top:10px;border:1px solid #2f7dff;border-radius:10px;background:#000;color:#3d9bff;outline:none;font-size:14px;}
+button{cursor:pointer;font-weight:bold;}
+button:hover{background:#2f7dff;color:#000;}
+button:active{transform:scale(.97);}
+.header h1{margin:0;font-size:26px;letter-spacing:3px;color:#3d9bff;text-shadow:0 0 8px #1e6fff,0 0 20px #1e6fff;}
+.header p{color:#699b92;font-size:11px;letter-spacing:1.5px;}
+.dur-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;}
+.dur{border:1px solid #2f7dff;border-radius:10px;padding:12px;cursor:pointer;font-size:13px;color:#3d9bff;}
+.dur.active{background:red;color:#fff;box-shadow:0 0 12px red;border-color:red;}
+.keyBox{margin-top:12px;padding:12px;border:1px dashed #2f7dff;border-radius:10px;background:#001411;word-break:break-all;font-size:15px;min-height:44px;letter-spacing:2px;font-weight:800;color:#00ffcc;}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px;}
+th,td{border:1px solid #2f7dff55;padding:5px;word-break:break-all;}
+th{background:#00221c;color:#3d9bff;}
+.status-ok{color:#22c98a;font-weight:700;}
+.status-used{color:#ff4444;font-weight:700;}
+.status-wait{color:#f0b429;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>🔑 HBAO KEY ADMIN</h1>
+  <p>GENERATOR • QUẢN LÝ KEY</p>
+</div>
+
+<div class="card">
+  <h3>⚙️ CHỌN THỜI HẠN</h3>
+  <div class="dur-grid">
+    <div class="dur" data-sec="60" onclick="pickDur(this)">1 PHÚT</div>
+    <div class="dur" data-sec="3600" onclick="pickDur(this)">1 TIẾNG</div>
+    <div class="dur" data-sec="86400" onclick="pickDur(this)">24 GIỜ</div>
+    <div class="dur" data-sec="604800" onclick="pickDur(this)">7 NGÀY</div>
+    <div class="dur" data-sec="2592000" onclick="pickDur(this)">1 THÁNG</div>
+    <div class="dur" data-sec="31536000" onclick="pickDur(this)">1 NĂM</div>
+  </div>
+
+  <input type="number" id="customSec" placeholder="Hoặc nhập số giây tùy chỉnh">
+  <input type="number" id="amount" value="1" placeholder="Số lượng key cần tạo" min="1">
+  <input type="number" id="maxDevices" value="1" placeholder="Số thiết bị đăng nhập được" min="1">
+
+  <button onclick="genKeys()">➕ TẠO KEY</button>
+  <button onclick="genInfinite()">♾️ TẠO KEY VÔ HẠN THỜI GIAN</button>
+  <button onclick="loadList()">🔄 TẢI DANH SÁCH KEY</button>
+</div>
+
+<div class="card">
+  <h3>📋 KEY VỪA TẠO</h3>
+  <div class="keyBox" id="keyOutput">—</div>
+  <button onclick="copyKeys()">📄 COPY TOÀN BỘ</button>
+</div>
+
+<div class="card">
+  <h3>🗂️ DANH SÁCH KEY</h3>
+  <table id="keyTable">
+    <tr><th>KEY</th><th>THỜI HẠN</th><th>SLOT</th><th>TRẠNG THÁI</th><th></th></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>💎 HAN BAO TWEAK ADMIN</h3>
+  <small>ADMIN HBAO • TELEGRAM @hanbaomeo</small>
+</div>
+
+</div>
+
+<script>
+// ============================================================
+// ⚠️ SERVER URL — TỰ ĐỘNG PHÁT HIỆN
+// Nếu mở qua http://localhost:9898/admin → tự dùng chính nó
+// Nếu mở file trực tiếp (file://) → mới dùng giá trị dự phòng
+// ============================================================
+let SERVER_URL;
+if(location.protocol === "http:" || location.protocol === "https:"){
+  SERVER_URL = location.origin; // tự lấy origin hiện tại
+}else{
+  SERVER_URL = "http://localhost:9898"; // fallback khi mở file trực tiếp
+}
+
+let selectedSec = 60;
+
+function pickDur(el){
+  document.querySelectorAll(".dur").forEach(d => d.classList.remove("active"));
+  el.classList.add("active");
+  selectedSec = parseInt(el.dataset.sec);
+  document.getElementById("customSec").value = "";
+}
+
+function getDuration(){
+  const c = parseInt(document.getElementById("customSec").value);
+  if(!isNaN(c) && c > 0) return c;
+  return selectedSec;
+}
+
+// Hàm fetch an toàn, báo lỗi rõ ràng
+async function apiFetch(path, options){
+  const url = SERVER_URL.replace(/\/+$/,"") + path;
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let data;
+  try{ data = JSON.parse(text); }
+  catch(e){
+    throw new Error("Server trả về không phải JSON.\nURL: " + url +
+                    "\nNội dung: " + text.slice(0,200));
+  }
+  return data;
+}
+
+async function genKeys(){
+  const amount     = Math.max(1, parseInt(document.getElementById("amount").value) || 1);
+  const maxDevices = Math.max(1, parseInt(document.getElementById("maxDevices").value) || 1);
+  const duration   = getDuration();
+  try{
+    const data = await apiFetch("/create", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ amount, duration, maxDevices })
+    });
+    if(data.ok){
+      document.getElementById("keyOutput").textContent = data.keys.join("\n");
+      loadList();
+    }else{
+      alert("❌ Lỗi tạo key: " + (data.reason || "unknown"));
+    }
+  }catch(e){
+    alert("❌ Không kết nối server:\n" + SERVER_URL +
+          "\n\nChi tiết: " + e.message +
+          "\n\n→ Kiểm tra:\n1. Đã chạy 'node server.js' chưa?\n2. SERVER_URL đúng chưa?\n3. Cùng mạng LAN chưa?");
+  }
+}
+
+async function genInfinite(){
+  const amount     = Math.max(1, parseInt(document.getElementById("amount").value) || 1);
+  const maxDevices = Math.max(1, parseInt(document.getElementById("maxDevices").value) || 1);
+  try{
+    const data = await apiFetch("/create", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ amount, duration:-1, maxDevices })
+    });
+    if(data.ok){
+      document.getElementById("keyOutput").textContent =
+        data.keys.join("\n") + "\n(VÔ HẠN THỜI GIAN)";
+      loadList();
+    }
+  }catch(e){
+    alert("❌ Không kết nối server:\n" + SERVER_URL + "\n\n" + e.message);
+  }
+}
+
+function formatDur(s){
+  if(s === -1 || s === "∞") return "VÔ HẠN";
+  if(s >= 31536000) return Math.round(s/31536000) + " năm";
+  if(s >= 2592000)  return Math.round(s/2592000)  + " tháng";
+  if(s >= 604800)   return Math.round(s/604800)   + " tuần";
+  if(s >= 86400)    return Math.round(s/86400)    + " ngày";
+  if(s >= 3600)     return Math.round(s/3600)     + " giờ";
+  if(s >= 60)       return Math.round(s/60)       + " phút";
+  return s + " giây";
+}
+
+async function loadList(){
+  try{
+    const data = await apiFetch("/list");
+    const tbl  = document.getElementById("keyTable");
+    tbl.innerHTML = "<tr><th>KEY</th><th>THỜI HẠN</th><th>SLOT</th><th>TRẠNG THÁI</th><th></th></tr>";
+    Object.keys(data.keys).forEach(k => {
+      const e = data.keys[k];
+      const tr = document.createElement("tr");
+      let status = e.used
+        ? '<span class="status-used">ĐÃ DÙNG</span>'
+        : '<span class="status-wait">CHƯA DÙNG</span>';
+      tr.innerHTML =
+        `<td>${k}</td>
+         <td>${formatDur(e.duration)}</td>
+         <td>${e.devices.length}/${e.maxDevices}</td>
+         <td>${status}</td>
+         <td><button style="padding:4px;font-size:11px;margin:0;" onclick="delKey('${k}')">X</button></td>`;
+      tbl.appendChild(tr);
+    });
+  }catch(e){
+    console.warn("Không tải được danh sách:", e.message);
+  }
+}
+
+async function delKey(k){
+  if(!confirm("Xoá key " + k + " ?")) return;
+  try{
+    await apiFetch("/delete", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ key:k })
+    });
+    loadList();
+  }catch(e){ alert("Lỗi xoá: " + e.message); }
+}
+
+function copyKeys(){
+  const txt = document.getElementById("keyOutput").textContent;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(txt).then(() => alert("✅ Đã copy!"));
+  }else{
+    // fallback cho trình duyệt cũ
+    const ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+    alert("✅ Đã copy!");
+  }
+}
+
+loadList();
+</script>
+</body>
+</html>
